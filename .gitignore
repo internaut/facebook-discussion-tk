@@ -1,3 +1,6 @@
+fetch-data/vendor/*
+fetch-data/composer.lock
+fetch-data/conf.php
 .idea
 *.pyc
 conf.py
