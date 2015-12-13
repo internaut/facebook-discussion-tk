@@ -28,19 +28,21 @@ def lemma_and_type_from_leipzig(word):
 
 nouns = {}
 for sentence in split(parsed_text):
-    print('SENTENCE: %s' % sentence)
-    for w in sentence.words:
+    # print('SENTENCE: %s' % sentence)
+    for w_i, w in enumerate(sentence.words):
         print('> WORD: %s' % w)
-        if w.type.startswith('NN') and w.string:
+        if w.string and (w.type.startswith('NN') or (LIBLEIPZIG_FOR_LEMMATA and w_i > 0 and w.string[0].isupper())):
             l = None
             came_from_leipzig = False
             if LIBLEIPZIG_FOR_LEMMATA:
                 l, wordtype = lemma_and_type_from_leipzig(w.string)
                 if l and wordtype:
-                    if wordtype != 'N':  # libleipzig has other opinion than pattern.de: this is no noun
+                    if wordtype != 'N':  # libleipzig says this is no noun
                         print('>> libleipzig: no noun')
                         continue
                     came_from_leipzig = True
+                else:
+                    print('>> libleipzig: undetermined')
             if not l:
                 l = w.lemma or w.string
                 came_from_leipzig = False
