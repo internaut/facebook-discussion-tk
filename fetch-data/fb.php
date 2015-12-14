@@ -3,6 +3,9 @@ require_once 'vendor/autoload.php';
 
 require_once 'conf.php';
 
+$requestsDefaultLimit = 25;
+$requestsPostFields = 'message,from{first_name,last_name},story,created_time,updated_time';
+
 function redirect_to($path) {
 	header('Location: ' . BASE_URL . '/' . $path);
 	exit;
@@ -28,7 +31,6 @@ function create_post_structure($pNode) {
 	
 	$fromName = null;
 	if ($pNode->getField('from') && is_object($pNode->getField('from'))) {
-		var_dump($pNode->getField('from'));
 		$fromName = $pNode->getField('from')->getField('first_name') . ' ' . $pNode->getField('from')->getField('last_name');
 	} else if ($pNode->getField('story')) {
 		$p = explode(' ', $pNode->getField('story'));
@@ -59,10 +61,29 @@ function deliver_json($data) {
 	echo json_encode($data);
 }
 
-function fb_GET_request($fb, $path) {
+function fb_GET_request($path, $fields=null, $limit=null, $addParams=[]) {
+	global $fb;
+	
+	$params = $addParams;
+
+	if ($fields) {
+		array_push($params, 'fields=' . $fields);
+	}
+
+	if (!is_null($limit)) {
+		array_push($params, 'limit=' . $limit);
+	}
+
+	$paramsStr = '';
+	if (count($params) > 0) {
+		$paramsStr = '?' . implode('&', $params);
+	}
+
+	$requestURL = '/' . $path . $paramsStr;
+
 	// Send the request to Graph
 	try {
-		$response = $fb->get('/' . $path);
+		$response = $fb->get($requestURL);
 	} catch(Facebook\Exceptions\FacebookResponseException $e) {
 	  // When Graph returns an error
 	  echo 'Graph returned an error: ' . $e->getMessage();
@@ -93,6 +114,6 @@ $userNode = null;
 if ($fbAccessToken) {
 	$fb->setDefaultAccessToken($fbAccessToken);
 	
-	$response = fb_GET_request($fb, 'me');
+	$response = fb_GET_request('me');
 	$userNode = $response->getGraphUser();
 }

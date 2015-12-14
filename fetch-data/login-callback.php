@@ -18,7 +18,7 @@ if (isset($accessToken)) {
   // Logged in!
   $_SESSION['facebook_access_token'] = (string) $accessToken;
 
-   header('Location: ' . BASE_URL . '/groups.php');
+   header('Location: ' . BASE_URL . '/');
    exit;
 } else {
 	echo 'Invalid access token';

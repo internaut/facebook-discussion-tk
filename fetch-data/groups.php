@@ -1,22 +1,41 @@
 <?php
 require_once 'fb.php';
 
-$gID = '179249120741';
+if (!$fbAccessToken) {
+	redirect_to('login.php');
+}
 
-$response = fb_GET_request($fb, $gID);
-$gNode = $response->getGraphObject();
+$output = [];
 
-$output = create_output_structure($gNode->getField('name'), 'group', $gID);
+foreach ($CONF_GROUP_IDS as $gLabel => $gConf) {
+	list($gID, $postsSince, $postsUntil) = $gConf;
 
-$response = fb_GET_request($fb, $gID . '/feed');
+	$response = fb_GET_request($gID);
+	$gNode = $response->getGraphObject();
 
-$postsEdge = $response->getGraphEdge();
+	$gOutput = create_output_structure($gNode->getField('name'), 'group', $gID);
 
-foreach ($postsEdge as $pNode) {
-	$pData = create_post_structure($pNode);
-	if ($pData) {
-		array_push($output['data'], $pData);
+	$extraParams = [];
+	if ($postsSince) {
+		array_push($extraParams, 'since=' . strtotime($postsSince));
 	}
+	if ($postsUntil) {
+		array_push($extraParams, 'until=' . strtotime($postsUntil));
+	}
+
+	$response = fb_GET_request($gID . '/feed', $requestsPostFields, $requestsDefaultLimit, $extraParams);
+	$postsEdge = $response->getGraphEdge();
+
+	do {
+		foreach ($postsEdge as $pNode) {
+			$pData = create_post_structure($pNode);
+			if ($pData) {
+				array_push($gOutput['data'], $pData);
+			}
+		}
+	} while ($postsEdge = $fb->next($postsEdge));
+	
+	$output[$gLabel] = $gOutput;
 }
 
 deliver_json($output);
