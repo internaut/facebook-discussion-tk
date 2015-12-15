@@ -3,9 +3,9 @@ require_once 'vendor/autoload.php';
 
 require_once 'conf.php';
 
-$requestsDefaultLimit = 25;
+$requestsDefaultLimit = 100;
 $requestsGroupPostFields = 'message,from{first_name,last_name},story,created_time,updated_time,comments';
-$requestsPagePostFields = 'message,from,story,created_time,updated_time,comments';	// somehow "from{first_name,last_name}" does not work here
+$requestsPagePostFields = 'message,from{name},story,created_time,updated_time,comments{message,from{name},created_time,comment_count}';	// somehow "from{first_name,last_name}" does not work here
 
 function redirect_to($path) {
 	header('Location: ' . BASE_URL . '/' . $path);
@@ -26,13 +26,15 @@ function create_output_structure($name, $type, $fbId) {
 
 function create_post_structure($pNode) {
 	$msg = $pNode->getField('message');
-	if (!$msg) {
+	if (is_null($msg)) {
 		return null;
 	}
 	
 	$fromName = null;
 	if ($pNode->getField('from') && is_object($pNode->getField('from')) && $pNode->getField('from')->getField('first_name') && $pNode->getField('from')->getField('last_name')) {
 		$fromName = $pNode->getField('from')->getField('first_name') . ' ' . $pNode->getField('from')->getField('last_name');
+	} else if ($pNode->getField('from') && is_object($pNode->getField('from')) && $pNode->getField('from')->getField('name')) {
+		$fromName = $pNode->getField('from')->getField('name');
 	} else if ($pNode->getField('story')) {
 		$p = explode(' ', $pNode->getField('story'));
 		if (count($p) >= 2) {
@@ -54,6 +56,7 @@ function create_post_structure($pNode) {
 		'date' => $time,
 		'from' => $fromName,
 		'message' => $msg,
+		'comments' => [],	// nested array of comments consisting of post structure
 	];
 }
 
