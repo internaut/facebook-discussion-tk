@@ -1,4 +1,6 @@
 <?php
+set_time_limit(10 * 60);
+
 require_once 'vendor/autoload.php';
 
 require_once 'conf.php';
@@ -60,6 +62,45 @@ function create_post_structure($pNode) {
 	];
 }
 
+function comments_from_post($pNode, &$data) {
+	global $fb;
+
+	$commentCount = $pNode->getField('comment_count');
+	$commentsEdge = $pNode->getField('comments');
+	
+	if (!$data) {
+		return;
+	}
+	
+	$refetch = false;
+	if (!$commentsEdge && $pNode && !is_null($commentCount) && $commentCount > 0) {
+		$cID = $pNode->getField('id');
+		if ($cID) {
+			$response = fb_GET_request($cID . '/comments', 'message,from{name},created_time,updated_time,comments,comment_count');
+			$commentsEdge = $response->getGraphEdge();
+			$refetch = true;
+		}
+	}
+	
+	if (!$commentsEdge) {
+		return;
+	}
+	
+	do {
+		foreach ($commentsEdge as $cNode) {
+			$cData = create_post_structure($cNode);
+			if (is_null($cData)) {
+				continue;
+			}
+		
+			comments_from_post($cNode, $cData);
+		
+			array_push($data['comments'], $cData);
+		}
+	} while ($commentsEdge = $fb->next($commentsEdge));
+}
+
+
 function deliver_json($data) {
 	header('Content-Type: application/json; charset=utf-8');
 	echo json_encode($data);
@@ -99,6 +140,74 @@ function fb_GET_request($path, $fields=null, $limit=null, $addParams=[]) {
 	}
 	
 	return $response;
+}
+
+function collect_posts($fbObjectConf, $baseRequest) {
+	global $fb;
+	global $requestsPagePostFields;
+	global $requestsDefaultLimit;
+
+	$output = [];
+	
+	foreach ($fbObjectConf as $pLabel => $pConf) {
+		list($pID, $postsSince, $postsUntil) = $pConf;
+
+		$response = fb_GET_request($pID);
+		$pgNode = $response->getGraphObject();
+
+		$pOutput = create_output_structure($pgNode->getField('name'), 'page', $pID);
+	
+		$tsStart = strtotime($postsSince);
+		$tsDelta = SEC_PER_DAY * CHUNK_PER_DAYS;
+		$tsEnd = strtotime($postsUntil);
+		$tsChunkStart = $tsStart;
+		$tsChunkEnd = $tsStart + $tsDelta;
+		if ($tsChunkEnd > $tsEnd) {
+			$tsChunkEnd = $tsEnd;
+		}
+	
+		do {
+			error_log('fetching chunk between ' . strftime('%Y-%m-%d', $tsChunkStart) . ' and ' . strftime('%Y-%m-%d', $tsChunkEnd));
+			$extraParams = [];
+			if ($postsSince) {
+				array_push($extraParams, 'since=' . $tsChunkStart);
+			}
+			if ($postsUntil) {
+				array_push($extraParams, 'until=' . $tsChunkEnd);
+			}
+
+			$response = fb_GET_request($pID . '/' . $baseRequest, $requestsPagePostFields, $requestsDefaultLimit, $extraParams);
+			$postsEdge = $response->getGraphEdge();
+
+			do {
+				foreach ($postsEdge as $pNode) {	// for each post of the page
+					$pData = create_post_structure($pNode);
+			
+					// now go through the comments
+					comments_from_post($pNode, $pData);
+			
+					// add it to the overall output
+					if ($pData) {
+						array_push($pOutput['data'], $pData);
+					}
+				}
+			} while ($postsEdge = $fb->next($postsEdge));
+		
+			$tsChunkStart += $tsDelta;
+			$tsChunkEnd = $tsChunkStart + $tsDelta;
+			if ($tsChunkEnd > $tsEnd) {
+				$tsChunkEnd = $tsEnd;
+			}
+			error_log('waiting ' . SLEEP_PER_CHUNK_SEC  . ' sec...');
+			sleep(SLEEP_PER_CHUNK_SEC);
+		} while ($tsChunkEnd < $tsEnd);
+		
+		error_log('done with ' . $pLabel);
+		
+		$output[$pLabel] = $pOutput;
+	}
+	
+	return $output;
 }
 
 
