@@ -23,7 +23,7 @@ foreach ($CONF_GROUP_IDS as $gLabel => $gConf) {
 		array_push($extraParams, 'until=' . strtotime($postsUntil));
 	}
 
-	$response = fb_GET_request($gID . '/feed', $requestsPostFields, $requestsDefaultLimit, $extraParams);
+	$response = fb_GET_request($gID . '/feed', $requestsGroupPostFields, $requestsDefaultLimit, $extraParams);
 	$postsEdge = $response->getGraphEdge();
 
 	do {

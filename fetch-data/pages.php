@@ -5,22 +5,40 @@ if (!$fbAccessToken) {
 	redirect_to('login.php');
 }
 
-$pID = '';
+$output = [];
 
-$response = fb_GET_request($pID);
-$pgNode = $response->getGraphObject();
+foreach ($CONF_PAGE_IDS as $pLabel => $pConf) {
+	list($pID, $postsSince, $postsUntil) = $pConf;
 
-$output = create_output_structure($pgNode->getField('name'), 'page', $pID);
+	$response = fb_GET_request($pID);
+	$pgNode = $response->getGraphObject();
 
-$response = fb_GET_request($pID . '/posts');
-
-$postsEdge = $response->getGraphEdge();
-
-foreach ($postsEdge as $pNode) {
-	$pData = create_post_structure($pNode);
-	if ($pData) {
-		array_push($output['data'], $pData);
+	$pOutput = create_output_structure($pgNode->getField('name'), 'page', $pID);
+	
+	$extraParams = [];
+	if ($postsSince) {
+		array_push($extraParams, 'since=' . strtotime($postsSince));
 	}
+	if ($postsUntil) {
+		array_push($extraParams, 'until=' . strtotime($postsUntil));
+	}
+
+	$response = fb_GET_request($pID . '/feed', $requestsPagePostFields, $requestsDefaultLimit, $extraParams);
+	$postsEdge = $response->getGraphEdge();
+
+	do {
+		foreach ($postsEdge as $pNode) {	// for each post of the page
+			$pData = create_post_structure($pNode);
+			if ($pData) {
+				array_push($pOutput['data'], $pData);
+			}
+			
+			// now go through the comments
+			var_dump($pNode->getField('comments'));
+		}
+	} while ($postsEdge = $fb->next($postsEdge));
+
+	$output[$pLabel] = $pOutput;
 }
 
 deliver_json($output);

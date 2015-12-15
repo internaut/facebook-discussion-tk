@@ -4,7 +4,8 @@ require_once 'vendor/autoload.php';
 require_once 'conf.php';
 
 $requestsDefaultLimit = 25;
-$requestsPostFields = 'message,from{first_name,last_name},story,created_time,updated_time';
+$requestsGroupPostFields = 'message,from{first_name,last_name},story,created_time,updated_time,comments';
+$requestsPagePostFields = 'message,from,story,created_time,updated_time,comments';	// somehow "from{first_name,last_name}" does not work here
 
 function redirect_to($path) {
 	header('Location: ' . BASE_URL . '/' . $path);
@@ -30,7 +31,7 @@ function create_post_structure($pNode) {
 	}
 	
 	$fromName = null;
-	if ($pNode->getField('from') && is_object($pNode->getField('from'))) {
+	if ($pNode->getField('from') && is_object($pNode->getField('from')) && $pNode->getField('from')->getField('first_name') && $pNode->getField('from')->getField('last_name')) {
 		$fromName = $pNode->getField('from')->getField('first_name') . ' ' . $pNode->getField('from')->getField('last_name');
 	} else if ($pNode->getField('story')) {
 		$p = explode(' ', $pNode->getField('story'));
