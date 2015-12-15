@@ -11,6 +11,10 @@ LIBLEIPZIG_FOR_LEMMATA = True
 LIBLEIPZIG_FAIL_RETRIES = 10
 LIBLEIPZIG_FAIL_RETRIES_SLEEP_SEC = 1
 
+STRINGS_STARTWITH_BLACKLIST = ()
+STRINGS_EQUALS_BLACKLIST = ()
+STRINGS_EQUALS_CS_BLACKLIST = ()    # case sensitive
+
 # text = u"""Eine Katze liegt auf einer Matte. Viele Katzen liegen auf vielen Matten. Die Katzen schlafen,
 # die Matten nicht. Die Hunde schlafen auch nicht. Man hört ihr lautes Gebell draußen vor dem Haus. In
 # vielen Häusern schlafen viele Katzen. Häuser haben Türen."""
@@ -23,6 +27,7 @@ def lemma_and_type_from_leipzig(word):
     else:
         return None, None
 
+
 def count_nouns_in_text(text):
     parsed_text = parse(text, lemmata=True)
 
@@ -30,8 +35,12 @@ def count_nouns_in_text(text):
     for sentence in split(parsed_text):
         # print('SENTENCE: %s' % sentence)
         for w_i, w in enumerate(sentence.words):
-            # print('> WORD: %s' % w)
-            if w.string and len(w.string) > 1 and (w.type.startswith('NN') or (LIBLEIPZIG_FOR_LEMMATA and w_i > 0 and w.string[0].isupper())):
+            # print('> WORD: %s (%s)' % (w, w.string))
+            if w.string and len(w.string) > 1 \
+                    and w.string.lower() not in STRINGS_EQUALS_BLACKLIST \
+                    and w.string not in STRINGS_EQUALS_CS_BLACKLIST \
+                    and not any([w.string.lower().startswith(bl_word) for bl_word in STRINGS_STARTWITH_BLACKLIST]) \
+                    and (w.type.startswith('NN') or (LIBLEIPZIG_FOR_LEMMATA and w_i > 0 and w.string[0].isupper())):
                 l = None
                 came_from_leipzig = False
                 if LIBLEIPZIG_FOR_LEMMATA:

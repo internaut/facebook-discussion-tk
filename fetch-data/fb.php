@@ -160,13 +160,16 @@ function collect_posts($fbObjectConf, $baseRequest) {
 		$tsStart = strtotime($postsSince);
 		$tsDelta = SEC_PER_DAY * CHUNK_PER_DAYS;
 		$tsEnd = strtotime($postsUntil);
-		$tsChunkStart = $tsStart;
-		$tsChunkEnd = $tsStart + $tsDelta;
-		if ($tsChunkEnd > $tsEnd) {
-			$tsChunkEnd = $tsEnd;
-		}
+		$tsChunkStart = $tsStart - $tsDelta;
+		$tsChunkEnd = $tsChunkStart + $tsDelta;
 	
 		do {
+			$tsChunkStart += $tsDelta;
+			$tsChunkEnd = $tsChunkStart + $tsDelta;
+			if ($tsChunkEnd > $tsEnd) {
+				$tsChunkEnd = $tsEnd;
+			}
+		
 			error_log('fetching chunk between ' . strftime('%Y-%m-%d', $tsChunkStart) . ' and ' . strftime('%Y-%m-%d', $tsChunkEnd));
 			$extraParams = [];
 			if ($postsSince) {
@@ -193,11 +196,6 @@ function collect_posts($fbObjectConf, $baseRequest) {
 				}
 			} while ($postsEdge = $fb->next($postsEdge));
 		
-			$tsChunkStart += $tsDelta;
-			$tsChunkEnd = $tsChunkStart + $tsDelta;
-			if ($tsChunkEnd > $tsEnd) {
-				$tsChunkEnd = $tsEnd;
-			}
 			error_log('waiting ' . SLEEP_PER_CHUNK_SEC  . ' sec...');
 			sleep(SLEEP_PER_CHUNK_SEC);
 		} while ($tsChunkEnd < $tsEnd);

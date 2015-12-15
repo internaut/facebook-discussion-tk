@@ -6,25 +6,85 @@ import sys
 import json
 import time
 import csv
+from pprint import pprint
 
 import wordstats
 
 LIMIT_PRINT = 20
-wordstats.LIBLEIPZIG_FOR_LEMMATA = False
+wordstats.LIBLEIPZIG_FOR_LEMMATA = True
+wordstats.STRINGS_STARTWITH_BLACKLIST = (
+    'http:',
+    'https:'
+)
+wordstats.STRINGS_EQUALS_BLACKLIST = (
+    ':d',
+    'seid',
+    'ja',
+    'du',
+    'hast',
+    'bist',
+    'euch',
+    'hab',
+    'habt',
+    'sowas',
+    'passiert',
+    'eure',
+    'nein',
+    'oder',
+    'die',
+    'und',
+    'jetzt',
+    'wir',
+    'das',
+    'ist',
+    'mehr',
+    'mal',
+    'dich',
+    'auf'
+)
+
+wordstats.STRINGS_EQUALS_CS_BLACKLIST = (
+    'Is'
+)
 
 output_file = None
 
+
 def main():
     global output_file
+    num_args = len(sys.argv)
     if len(sys.argv) < 3:
-        print("usage: %s <json-file> <output-csv-file>" % sys.argv[0], file=sys.stderr)
+        print("usage: %s <json-file-1> [<json-file-2> ...] <output-csv-file>" % sys.argv[0], file=sys.stderr)
         exit(1)
 
-    json_file, output_file = sys.argv[1:3]
-    with open(json_file) as f:
-        json_data = json.load(f)
+    json_files = sys.argv[1:num_args - 1]
+    output_file = sys.argv[num_args - 1]
 
-    analyse(json_data)
+    merged_json_data = {}
+    for json_file in json_files:
+        print("> reading JSON file '%s'..." % json_file)
+        with open(json_file) as f:
+            json_data = json.load(f)
+            for label, data in json_data.items():
+                if label not in merged_json_data:
+                    merged_json_data[label] = data
+                else:
+                    merged_json_data[label]['data'].extend(data['data'])
+
+    # pprint(merged_json_data)
+    analyse(merged_json_data)
+
+
+def flatten_messages(messages, level=1):
+    flat_msgs = []
+    # print('%s num. messages: %d' % ('>' * (level + 2), len(messages)))
+    for m in messages:
+        flat_msgs.append(m)
+
+        if 'comments' in m and len(m['comments']) > 0:
+            flat_msgs.extend(flatten_messages(m['comments'], level + 1))
+
+    return flat_msgs
 
 
 def analyse(json_data):
@@ -34,16 +94,22 @@ def analyse(json_data):
         print(">> name: '%s'" % data['meta']['name'])
         print(">> facebook id: '%s'" % data['meta']['fb_id'])
         print(">> collection date: '%s'" % data['meta']['date'])
-        print(">> number of collection posts: %d" % len(data['data']))
+        print(">> flattening posts and comments...")
+
+        flat_messages = flatten_messages(data['data'])
+        print(">> number of overall messages: %d" % len(flat_messages))
 
         sum_counts = {}
         print(">> counting nouns", end='')
         sys.stdout.flush()
-        for post in data['data']:
+        for i, post in enumerate(flat_messages):
             counts = wordstats.count_nouns_in_text(post['message'])
             add_up_noun_counts(sum_counts, counts)
-            print(".", end='')
-            sys.stdout.flush()
+
+            if i % 100 == 0:
+                print(".", end='')
+                sys.stdout.flush()
+
             if wordstats.LIBLEIPZIG_FOR_LEMMATA:
                 time.sleep(1)
         print()
@@ -56,6 +122,7 @@ def analyse(json_data):
 
     print("> all done")
 
+
 def write_output_to_file(label, sum_counts, append=False):
     print(">> writing output to file '%s'" % output_file)
 
@@ -66,7 +133,6 @@ def write_output_to_file(label, sum_counts, append=False):
             writer.writerow([label.encode('utf-8'), noun.encode('utf-8'), count])
 
     print(">> done")
-
 
 
 def add_up_noun_counts(s, a):

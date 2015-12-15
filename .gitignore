@@ -6,3 +6,5 @@ fetch-data/conf.php
 conf.py
 .rsync-exclude
 Makefile
+collected_data/
+results/
