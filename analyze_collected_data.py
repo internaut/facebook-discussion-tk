@@ -53,8 +53,8 @@ output_file = None
 def main():
     global output_file
     num_args = len(sys.argv)
-    if len(sys.argv) < 3:
-        print("usage: %s <json-file-1> [<json-file-2> ...] <output-csv-file>" % sys.argv[0], file=sys.stderr)
+    if num_args < 3:
+        print("usage: %s <json-file-1> [json-file-2 ...] <output-csv-file>" % sys.argv[0], file=sys.stderr)
         exit(1)
 
     json_files = sys.argv[1:num_args - 1]
