@@ -6,9 +6,98 @@ import sys
 import codecs
 import re
 import json
+from pprint import pprint
 from copy import copy
 from datetime import datetime
 from HTMLParser import HTMLParser
+
+
+class FbHTMLParserFindPost(HTMLParser):
+    def __init__(self, callback_found_post):
+        HTMLParser.__init__(self)
+
+        self._observed_tags = ('div', 'abbr', 'h5')
+
+        self.post_outer_tag_level = None
+        self.post_author_tag_level = None
+        self.post_inner_tag_level = None
+        self.cur_post_id = None
+        self.cur_post_date = None
+        self.cur_post_author = None
+        self.cur_tag_level = dict((tag, 0) for tag in self._observed_tags)
+        self.post_text = []
+        self.callback_found_post = callback_found_post
+
+        self._post_outer_id_startswith = 'mall_post_'
+        self._pttrn_post_id = re.compile('^' + self._post_outer_id_startswith + '(\d+)')
+
+    def handle_starttag(self, tag, attrs):
+        if tag not in self._observed_tags:
+            return
+
+        attrib_dict = dict(attrs)
+        self.cur_tag_level[tag] += 1
+
+        if tag == 'div':
+            # check if we have a outer post div
+            if self.post_outer_tag_level is None\
+                    and 'id' in attrib_dict and attrib_dict['id'].startswith(self._post_outer_id_startswith):
+                m = self._pttrn_post_id.search(attrib_dict['id'])
+                if m and m.group(1):
+                    self.cur_post_id = m.group(1)
+                    self.post_outer_tag_level = self.cur_tag_level[tag]
+                return
+
+            # check if we have an inner post div (contains post message text)
+            if self.post_outer_tag_level is not None and self.post_inner_tag_level is None\
+                    and 'class' in attrib_dict and attrib_dict['class'] == '_5pbx userContent':
+                self.post_inner_tag_level = self.cur_tag_level[tag]
+        elif tag == 'abbr':
+            # check if we have a date field
+            if self.post_outer_tag_level is not None\
+                    and 'class' in attrib_dict and attrib_dict['class'] == '_5ptz'\
+                    and 'data-utime' in attrib_dict:
+                dt_obj = datetime.fromtimestamp(int(attrib_dict['data-utime']))
+                self.cur_post_date = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+        elif tag == 'h5':
+            # check if we have an author field
+            if self.post_outer_tag_level is not None and self.post_author_tag_level is None\
+                    and 'class' in attrib_dict and attrib_dict['class'] == '_5pbw':
+                self.post_author_tag_level = self.cur_tag_level[tag]
+
+    def handle_endtag(self, tag):
+        if tag not in self._observed_tags:
+            return
+
+        if tag == 'h5':
+            if self.post_author_tag_level is not None and self.post_author_tag_level == self.cur_tag_level[tag]:
+                self.post_author_tag_level = None
+        elif tag == 'div':
+            # check inner post tag
+            if self.post_inner_tag_level is not None and self.post_inner_tag_level == self.cur_tag_level[tag]:
+                self.post_inner_tag_level = None
+
+                post_data = {
+                    'id': self.cur_post_id,
+                    'date': self.cur_post_date,
+                    'from': self.cur_post_author,
+                    'message': u'\n'.join(self.post_text)
+                }
+                self.callback_found_post(post_data)
+                self.post_text = []  # reset
+
+            if self.post_outer_tag_level is not None and self.post_outer_tag_level == self.cur_tag_level[tag]:
+                self.post_outer_tag_level = None
+                self.cur_post_id = None     # reset
+
+        self.cur_tag_level[tag] -= 1
+
+    def handle_data(self, data):
+        if self.post_author_tag_level is not None:
+            self.cur_post_author = data
+
+        if self.post_inner_tag_level is not None:
+            self.post_text.append(data)
 
 
 class FbHTMLParserBase(HTMLParser):
@@ -66,42 +155,6 @@ class FbHTMLParserFindCodeHiddenElem(FbHTMLParserBase):
     def handle_comment(self, data):
         if self.got_target_level is not None:
             self.callback_found_elem_comment(data)
-
-
-class FbHTMLParserFindPostID(FbHTMLParserBase):
-    def __init__(self, callback_found_post_id):
-        FbHTMLParserBase.__init__(self, callback_target_tag_began=self._post_id_tag_began)
-        self.target_tag = 'div'
-        self.target_attr_name = 'id'
-        self.target_attr_val = 'mall_post_'
-        self._pttrn_post_id = re.compile('^' + self.target_attr_val + '(\d+)')
-        self.target_attr_val_startswith = True
-        self.callback_found_post_id = callback_found_post_id
-
-    def _post_id_tag_began(self, tag, attrs):
-        attrib_dict = dict(attrs)
-        assert 'id' in attrib_dict
-        m = self._pttrn_post_id.search(attrib_dict['id'])
-        if m and m.group(1):
-            self.callback_found_post_id(m.group(1))
-
-
-class FbHTMLParserFindPost(FbHTMLParserBase):
-    def __init__(self, callback_found_post):
-        FbHTMLParserBase.__init__(self, callback_target_tag_ended=self._post_tag_ended)
-        self.callback_found_post = callback_found_post
-        self.target_tag = 'div'
-        self.target_attr_name = 'class'
-        self.target_attr_val = '_5pbx userContent'
-        self.post_text = []
-
-    def _post_tag_ended(self):
-        self.callback_found_post(self.post_text)
-        self.post_text = []     # reset
-
-    def handle_data(self, data):
-        if self.got_target_level is not None:
-            self.post_text.append(data)
 
 
 class FbHTMLParserFindComment(FbHTMLParserBase):
@@ -168,45 +221,41 @@ class FbHTMLParserFindComment(FbHTMLParserBase):
 
                     self.callback_found_comment(c_out)
 
-                    # post_id = c['post_id']
-                    # if post_id not in comments:
-                    #     comments[post_id] = []
-                    # comments[post_id].append(c_out)
-
 
 class FbParser(object):
     def __init__(self):
         self.find_code_hidden_elem_parser = FbHTMLParserFindCodeHiddenElem(self.found_code_hidden_elem_callback)
-        self.find_post_id_parser = FbHTMLParserFindPostID(self.found_post_id_callback)
         self.find_post_parser = FbHTMLParserFindPost(self.found_post_callback)
         self.find_comment_parser = FbHTMLParserFindComment(self.found_comment_callback)
 
-        self.post_ids = []
-        self.posts = []
-        self.cur_post_num = 0
+        self.collected_posts = []
+        self.collected_comments = []
 
     def parse(self, html):
         self.find_code_hidden_elem_parser.feed(html)
         self.find_comment_parser.feed(html)
 
-        print(len(self.post_ids), len(self.posts))
+        output = []
+        for p in self.collected_posts:
+            p_out = copy(p)
+            p_out['comments'] = []
+            for c in self.collected_comments:
+                if c['post_id'] == p['id']:
+                    p_out['comments'].append(c)
+
+            output.append(p_out)
+
+        pprint(output)
 
     def found_code_hidden_elem_callback(self, data):
         single_line_data = data.replace('\n', ' ').replace('\r', '')
-        self.find_post_id_parser.feed(single_line_data)
         self.find_post_parser.feed(single_line_data)
 
-    def found_post_id_callback(self, post_id):
-        self.post_ids.append(post_id)
-
     def found_post_callback(self, post):
-        #print('POST %d: ' % self.post_ids[self.cur_post_num], data)
-        self.posts.append(post)
-        self.cur_post_num += 1
+        self.collected_posts.append(post)
 
-    def found_comment_callback(self, data):
-        pass
-        # print('COMMENT:', data)
+    def found_comment_callback(self, comment):
+        self.collected_comments.append(comment)
 
 
 def main():
