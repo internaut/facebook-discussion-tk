@@ -16,7 +16,14 @@ class FbHTMLParserFindPost(HTMLParser):
     def __init__(self, callback_found_post):
         HTMLParser.__init__(self)
 
-        self._observed_tags = ('div', 'abbr', 'h5')
+        self._post_outer_id_startswith = 'mall_post_'
+        self._pttrn_post_id = re.compile('^' + self._post_outer_id_startswith + '(\d+)')
+
+        self._observed_tags = ('div', 'abbr', 'h5', 'a', 'span')
+
+        self.callback_found_post = callback_found_post
+
+        self.cur_tag_level = dict((tag, 0) for tag in self._observed_tags)
 
         self.post_outer_tag_level = None
         self.post_author_tag_level = None
@@ -24,12 +31,15 @@ class FbHTMLParserFindPost(HTMLParser):
         self.cur_post_id = None
         self.cur_post_date = None
         self.cur_post_author = None
-        self.cur_tag_level = dict((tag, 0) for tag in self._observed_tags)
-        self.post_text = []
-        self.callback_found_post = callback_found_post
+        self.cur_post_text = []
+        self.cur_post_comments = []
 
-        self._post_outer_id_startswith = 'mall_post_'
-        self._pttrn_post_id = re.compile('^' + self._post_outer_id_startswith + '(\d+)')
+        self.comment_list_tag_level = None
+        self.comment_list_content_tag_level = None
+        self.comment_list_content_author_tag_level = None
+        self.comment_list_content_message_tag_level = None
+        self.comment_replies_tag_level = None
+        self.cur_comment = None
 
     def handle_starttag(self, tag, attrs):
         if tag not in self._observed_tags:
@@ -37,6 +47,11 @@ class FbHTMLParserFindPost(HTMLParser):
 
         attrib_dict = dict(attrs)
         self.cur_tag_level[tag] += 1
+
+        if 'class' in attrib_dict:
+            tag_classes = attrib_dict['class'].split()
+        else:
+            tag_classes = []
 
         if tag == 'div':
             # check if we have a outer post div
@@ -50,19 +65,42 @@ class FbHTMLParserFindPost(HTMLParser):
 
             # check if we have an inner post div (contains post message text)
             if self.post_outer_tag_level is not None and self.post_inner_tag_level is None\
-                    and 'class' in attrib_dict and attrib_dict['class'] == '_5pbx userContent':
+                    and '_5pbx' in tag_classes and 'userContent' in tag_classes:
                 self.post_inner_tag_level = self.cur_tag_level[tag]
+
+            # check if we have a comment list
+            if self.post_outer_tag_level is not None and 'UFIList' in tag_classes:
+                self.comment_list_tag_level = self.cur_tag_level[tag]
+                self.cur_post_comments = []
+
+            # check if we have a comment content in a comment list:
+            if self.comment_list_tag_level is not None and 'UFICommentContentBlock' in tag_classes:
+                self.comment_list_content_tag_level = self.cur_tag_level[tag]
+        elif tag == 'a':
+            # check if we have an author in a comment content:
+            if self.comment_list_content_tag_level is not None and 'UFICommentActorName' in tag_classes:
+                self.comment_list_content_author_tag_level = self.cur_tag_level[tag]
+        elif tag == 'span':
+            # check if we have a comment message:
+            if self.comment_list_content_tag_level is not None and 'UFICommentBody' in tag_classes:
+                self.comment_list_content_message_tag_level = self.cur_tag_level[tag]
         elif tag == 'abbr':
-            # check if we have a date field
-            if self.post_outer_tag_level is not None\
-                    and 'class' in attrib_dict and attrib_dict['class'] == '_5ptz'\
-                    and 'data-utime' in attrib_dict:
+            # check if we have a post date field
+            if self.post_outer_tag_level is not None and self.comment_list_tag_level is None\
+                    and '_5ptz' in tag_classes and 'data-utime' in attrib_dict:
                 dt_obj = datetime.fromtimestamp(int(attrib_dict['data-utime']))
                 self.cur_post_date = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+
+            # check if we have a comment date field
+            if self.comment_list_tag_level is not None\
+                    and 'livetimestamp' in tag_classes and 'data-utime' in attrib_dict:
+                dt_obj = datetime.fromtimestamp(int(attrib_dict['data-utime']))
+                assert self.cur_comment
+                self.cur_comment['date'] = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
         elif tag == 'h5':
             # check if we have an author field
             if self.post_outer_tag_level is not None and self.post_author_tag_level is None\
-                    and 'class' in attrib_dict and attrib_dict['class'] == '_5pbw':
+                    and '_5pbw' in tag_classes:
                 self.post_author_tag_level = self.cur_tag_level[tag]
 
     def handle_endtag(self, tag):
@@ -72,22 +110,44 @@ class FbHTMLParserFindPost(HTMLParser):
         if tag == 'h5':
             if self.post_author_tag_level is not None and self.post_author_tag_level == self.cur_tag_level[tag]:
                 self.post_author_tag_level = None
+        elif tag == 'a':
+            # check comment author:
+            if self.comment_list_content_author_tag_level is not None and self.comment_list_content_author_tag_level == self.cur_tag_level[tag]:
+                self.comment_list_content_author_tag_level = None
+        elif tag == 'span':
+            # check comment message:
+            if self.comment_list_content_message_tag_level is not None and self.comment_list_content_message_tag_level == self.cur_tag_level[tag]:
+                self.comment_list_content_message_tag_level = None
         elif tag == 'div':
             # check inner post tag
             if self.post_inner_tag_level is not None and self.post_inner_tag_level == self.cur_tag_level[tag]:
                 self.post_inner_tag_level = None
 
+            # check comment list
+            if self.comment_list_tag_level is not None and self.comment_list_tag_level == self.cur_tag_level[tag]:
+                self.comment_list_tag_level = None
+
+            # check comment content
+            if self.comment_list_content_tag_level is not None and self.comment_list_content_tag_level == self.cur_tag_level[tag]:
+                assert self.cur_comment
+                self.comment_list_content_tag_level = None
+                self.cur_post_comments.append(self.cur_comment)
+                self.cur_comment = None     # reset
+
+            # check outer post tag
+            if self.post_outer_tag_level is not None and self.post_outer_tag_level == self.cur_tag_level[tag]:
+                self.post_outer_tag_level = None
+
                 post_data = {
                     'id': self.cur_post_id,
                     'date': self.cur_post_date,
                     'from': self.cur_post_author,
-                    'message': u'\n'.join(self.post_text)
+                    'message': u'\n'.join(self.cur_post_text),
+                    'comments': self.cur_post_comments
                 }
                 self.callback_found_post(post_data)
-                self.post_text = []  # reset
-
-            if self.post_outer_tag_level is not None and self.post_outer_tag_level == self.cur_tag_level[tag]:
-                self.post_outer_tag_level = None
+                self.cur_post_text = []  # reset
+                self.cur_post_comments = []
                 self.cur_post_id = None     # reset
 
         self.cur_tag_level[tag] -= 1
@@ -97,7 +157,19 @@ class FbHTMLParserFindPost(HTMLParser):
             self.cur_post_author = data
 
         if self.post_inner_tag_level is not None:
-            self.post_text.append(data)
+            self.cur_post_text.append(data)
+
+        if self.comment_list_content_author_tag_level is not None:
+            self.cur_comment = {
+                'from': data,
+                'date': None,
+                'message': None,
+                'comments': []
+            }
+
+        if self.comment_list_content_message_tag_level is not None:
+            assert self.cur_comment
+            self.cur_comment['message'] = data
 
 
 class FbHTMLParserBase(HTMLParser):
@@ -142,19 +214,6 @@ class FbHTMLParserBase(HTMLParser):
                 if self.callback_target_tag_ended:
                     self.callback_target_tag_ended()
                 self.got_target_level = None
-
-
-class FbHTMLParserFindCodeHiddenElem(FbHTMLParserBase):
-    def __init__(self, callback_found_elem_comment):
-        FbHTMLParserBase.__init__(self)
-        self.callback_found_elem_comment = callback_found_elem_comment
-        self.target_tag = 'code'
-        self.target_attr_name = 'class'
-        self.target_attr_val = 'hidden_elem'
-
-    def handle_comment(self, data):
-        if self.got_target_level is not None:
-            self.callback_found_elem_comment(data)
 
 
 class FbHTMLParserFindComment(FbHTMLParserBase):
@@ -224,38 +283,16 @@ class FbHTMLParserFindComment(FbHTMLParserBase):
 
 class FbParser(object):
     def __init__(self):
-        self.find_code_hidden_elem_parser = FbHTMLParserFindCodeHiddenElem(self.found_code_hidden_elem_callback)
         self.find_post_parser = FbHTMLParserFindPost(self.found_post_callback)
-        self.find_comment_parser = FbHTMLParserFindComment(self.found_comment_callback)
-
-        self.collected_posts = []
-        self.collected_comments = []
+        self.posts = []
 
     def parse(self, html):
-        self.find_code_hidden_elem_parser.feed(html)
-        self.find_comment_parser.feed(html)
+        self.find_post_parser.feed(html)
 
-        output = []
-        for p in self.collected_posts:
-            p_out = copy(p)
-            p_out['comments'] = []
-            for c in self.collected_comments:
-                if c['post_id'] == p['id']:
-                    p_out['comments'].append(c)
-
-            output.append(p_out)
-
-        pprint(output)
-
-    def found_code_hidden_elem_callback(self, data):
-        single_line_data = data.replace('\n', ' ').replace('\r', '')
-        self.find_post_parser.feed(single_line_data)
+        pprint(self.posts)
 
     def found_post_callback(self, post):
-        self.collected_posts.append(post)
-
-    def found_comment_callback(self, comment):
-        self.collected_comments.append(comment)
+        self.posts.append(post)
 
 
 def main():
