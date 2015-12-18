@@ -31,6 +31,7 @@ class FbHTMLParserFindPost(HTMLParser):
         self.cur_post_author = None
         self.cur_post_text = []
         self.cur_post_comments = []
+        self.orig_post_comments = None
 
         self.comment_list_tag_level = None
         self.comment_list_content_tag_level = None
@@ -38,6 +39,7 @@ class FbHTMLParserFindPost(HTMLParser):
         self.comment_list_content_message_tag_level = None
         self.comment_replies_tag_level = None
         self.cur_comment = None
+        self.prev_comment = None
 
     def handle_starttag(self, tag, attrs):
         if tag not in self._observed_tags:
@@ -66,6 +68,14 @@ class FbHTMLParserFindPost(HTMLParser):
             if self.post_outer_tag_level is not None and 'UFIList' in tag_classes:
                 self.comment_list_tag_level = self.cur_tag_level[tag]
                 self.cur_post_comments = []
+
+            # check if we have a reply list on a comment
+            if self.comment_list_tag_level is not None and 'UFIReplyList' in tag_classes:
+                self.comment_replies_tag_level = self.cur_tag_level[tag]
+                assert self.prev_comment and type(self.cur_post_comments) == list \
+                       and type(self.prev_comment.get('comments')) == list
+                self.orig_post_comments = self.cur_post_comments
+                self.cur_post_comments = self.prev_comment.get('comments')
 
             # check if we have a comment content in a comment list:
             if self.comment_list_tag_level is not None and 'UFICommentContentBlock' in tag_classes:
@@ -121,11 +131,18 @@ class FbHTMLParserFindPost(HTMLParser):
             if self.comment_list_tag_level == self.cur_tag_level[tag]:
                 self.comment_list_tag_level = None
 
+            # check comment reply list
+            if self.comment_replies_tag_level == self.cur_tag_level[tag]:
+                self.cur_post_comments = self.orig_post_comments
+                self.comment_replies_tag_level = None
+
             # check comment content
             if self.comment_list_content_tag_level == self.cur_tag_level[tag]:
                 assert self.cur_comment
                 self.comment_list_content_tag_level = None
+                self.cur_comment['message'] = ' '.join(self.cur_comment['message'])
                 self.cur_post_comments.append(self.cur_comment)
+                self.prev_comment = self.cur_comment
                 self.cur_comment = None     # reset
 
             # check outer post tag
@@ -141,6 +158,7 @@ class FbHTMLParserFindPost(HTMLParser):
                 self.callback_found_post(post_data)
                 self.cur_post_text = []  # reset
                 self.cur_post_comments = []
+                self.prev_comment = None
 
         self.cur_tag_level[tag] -= 1
 
@@ -155,27 +173,29 @@ class FbHTMLParserFindPost(HTMLParser):
             self.cur_comment = {
                 'from': data,
                 'date': None,
-                'message': None,
+                'message': [],
                 'comments': []
             }
 
         if self.comment_list_content_message_tag_level is not None:
             assert self.cur_comment
-            self.cur_comment['message'] = data
+            self.cur_comment['message'].append(data)
 
 
 class FbParser(object):
     def __init__(self):
         self.find_post_parser = FbHTMLParserFindPost(self.found_post_callback)
-        self.posts = []
+        self._posts = []
+
+    @property
+    def output(self):
+        return self._posts
 
     def parse(self, html):
         self.find_post_parser.feed(html)
 
-        pprint(self.posts)
-
     def found_post_callback(self, post):
-        self.posts.append(post)
+        self._posts.append(post)
 
 
 def main():
@@ -190,15 +210,25 @@ def main():
     output_json_data = {}
     for html_file in html_files:
         json_data = parse_html_file(html_file)
+        # TODO ...
+        output_json_data = json_data
+
+    print("> writing result JSON file '%s'..." % output_file)
+    with codecs.open(output_file, 'w', 'utf-8') as f:
+        json.dump(output_json_data, f, indent=2)
 
 
 def parse_html_file(html_file):
     print("> parsing HTML file '%s'..." % html_file)
 
     parser = FbParser()
+    output = None
     with codecs.open(html_file, 'r', 'utf-8') as f:
         html_content = f.read()
         parser.parse(html_content)
+        output = parser.output
+
+    return output
 
 
 if __name__ == '__main__':
