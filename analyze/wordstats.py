@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
+from collections import defaultdict
 import sys
 import time
 
@@ -31,7 +32,7 @@ def lemma_and_type_from_leipzig(word):
 def count_nouns_in_text(text):
     parsed_text = parse(text, lemmata=True)
 
-    nouns = {}
+    nouns = defaultdict(int)
     for sentence in split(parsed_text):
         # print('SENTENCE: %s' % sentence)
         for w_i, w in enumerate(sentence.words):
@@ -67,8 +68,7 @@ def count_nouns_in_text(text):
                     l = w.lemma or w.string
                     came_from_leipzig = False
                 # print('>> NOUN: %s (%s, %s)' % (w.string,  l, came_from_leipzig))
-                if l not in nouns:
-                    nouns[l] = 0
+
                 nouns[l] += 1
 
     # print('---')

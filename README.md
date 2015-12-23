@@ -31,7 +31,7 @@ The produced JSON files can be used for analyses by using scripts in the *analyz
 ./analyze_noun_counts.py <json-file-1> [json-file-2 ...] <output-csv-file>
 ```
 
-It takes the JSON data from the scraping scripts and outputs a CSV file with the format "label, noun, count".
+It takes the JSON data from the scraping scripts and outputs a CSV file with the format "label, noun, count". The basic approach on how the nouns are extracted is described [in this blog post](https://mkonrad.net/2015/12/13/extracting-german-nouns-with-python-using-pattern-library-and-libleipzig.html).
 
 ## Requirements
 
