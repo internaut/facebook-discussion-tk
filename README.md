@@ -41,3 +41,8 @@ All Python scripts were tested under Python 2.7 and might run with other 2.x ver
 * optionally [libleipzig](https://pypi.python.org/pypi/libleipzig/1.3) and [suds](https://pypi.python.org/pypi/suds/0.4)
 
 The PHP scripts for scraping public pages and groups are written in PHP 5 and require the [Facebook PHP SDK v5](https://developers.facebook.com/docs/reference/php). It can be installed using [*composer*](https://getcomposer.org/).
+
+## License
+
+Under MIT License. See `LICENSE` file.
+
