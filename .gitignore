@@ -3,9 +3,7 @@ collect/php_automated_public/composer.lock
 collect/php_automated_public/conf.php
 test_data/*
 .idea
-*.pyc
-conf.py
+**/*.pyc
 .rsync-exclude
 Makefile
-collected_data/
 results/
