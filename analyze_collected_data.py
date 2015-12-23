@@ -11,12 +11,14 @@ from pprint import pprint
 import wordstats
 
 LIMIT_PRINT = 20
-wordstats.LIBLEIPZIG_FOR_LEMMATA = True
+wordstats.LIBLEIPZIG_FOR_LEMMATA = False
 wordstats.STRINGS_STARTWITH_BLACKLIST = (
     'http:',
-    'https:'
+    'https:',
+    u'„'
 )
 wordstats.STRINGS_EQUALS_BLACKLIST = (
+    'emoticon',
     ':d',
     'seid',
     'ja',
