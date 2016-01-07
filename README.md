@@ -1,6 +1,6 @@
 # Small Facebook Discussion Analysis Toolkit
 
-This is a collection of tools to (semi-)automatically collect and analyze data from online discussions on Facebook groups and pages. This means that posts and comments (including their hierarchical structure and some metadata) are collected using either the Facebook API for public groups and pages or by parsing Facebook's HTML files for closed groups and pages. The data is saved in a JSON format and can be used for different analyses. By now, only counting nouns in all the posts and comments in German language is supported.
+This is a collection of tools to (semi-)automatically collect and analyze data from online discussions on Facebook groups and pages (see blog post ['Scraping data from Facebook groups and pages'](https://mkonrad.net/2015/12/23/scraping-data-from-facebook-groups-and-pages.html)). This means that posts and comments (including their hierarchical structure and some metadata) are collected using either the Facebook API for public groups and pages or by parsing Facebook's HTML files for closed groups and pages. The data is saved in a JSON format and can be used for different analyses. By now, only counting nouns in all the posts and comments in German language is supported.
 
 ## Collecting data
 
